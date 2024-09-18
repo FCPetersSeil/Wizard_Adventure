@@ -1,71 +1,124 @@
 using System.Collections;
 using System.Collections.Generic;
 using Unity.VisualScripting;
+using UnityEditor;
 using UnityEngine;
 
-public class Wizard_Steuerung : MonoBehaviour
+public class Wizard_Movement : MonoBehaviour
 {
+    public static Wizard_Movement instance;          // Ändert den Spieler zu einem Singleton
 
-    public Rigidbody rb;    // Referenz auf den Rigidbody des Charakters, notwendig fuer physikalische Berechnungen
-    public AudioSource audioSource; // Referenz auf die Audioquelle, die den Sprung-Sound abspielen wird
-    //*** AUSKOMMENTIERT *** public GameObject fireballPrefab;   // Referenz auf das Feuerball-Prefab
+    public Rigidbody rb;                            // Referenz auf den Rigidbody des Charakters, notwendig für physikalische Berechnungen
+    public AudioSource audioSource;                 // Referenz auf die Audioquelle, die den Sprung-Sound abspielen wird
 
-    public float speed = 5f;    // Geschwindigkeit des Charakters
-    public float jumpForce = 5f;    // Sprungkraft des Charakters
-    //*** AUSKOMMENTIERT *** public float fireballForce = 10f;   // Geschwidigkeit des Abgefeuerten Feuerballs
+    public float speed = 5f;                        
+    public float jumpForce = 5f;                    
+    public int health = 100;                        
+    public int maxMana = 100;                       
+    public int currentMana;                         
+    public float manaRegenRate = 5f;                // Rate der Mana-Regeneration pro Sekunde
+    public int manaCostPerFireball = 10;            // Mana-Kosten pro Feuerball
 
-    private bool isGrounded = true; // Boolesche Variable, die anzeigt, ob der Charakter auf dem Boden steht
+    public float invulnerabilityDuration = 2f;      // Dauer der Unverwundbarkeit in Sekunden
 
-    UnityEngine.Vector3 startPos;   //Speichert die Startposition des Charakters
+    // Frostangriff Variablen
+    public bool isFrostAttackActive = false;        // Variable, die anzeigt, ob der Frostangriff aktiv ist
+    public float frostCooldown = 5f;                // Cooldown zwischen Frostangriffen
+    private float frostTimer = 0f;                  // Timer, um den Cooldown zu überwachen
 
+    private bool isGrounded = true;                 // Gibt an, ob der Charakter auf dem Boden steht
+    private bool isInvulnerable = false;            // Gibt an, ob der Spieler momentan unverwundbar ist
+    private float invulnerabilityTimer = 0f;
 
+    UnityEngine.Vector3 startPos;   // Speichert die Startposition des Charakters
+
+    private void Awake()            // Stellt sicher, dass es nur eine Instanz verfügbar ist
+    {
+        if (instance == null)
+        {
+            instance = this;        // Weist die Instanz zu, wenn die nicht existiert
+        }
+        else
+        {
+            Destroy(gameObject);    // Zerstört das Objekt, wenn es bereits vorhanden ist
+        }
+    }
 
     // Start wird einmalig beim Start des Spiels aufgerufen
     private void Start()
     {
         startPos = transform.position;  // Speichern der aktuellen Position als Startposition
+        currentMana = maxMana;          // Setzt das Mana zu Beginn auf das Maximum
     }
-
-
-
-
 
     // Update wird einmal pro Frame aufgerufen
     void Update()
     {
+        // Mana automatisch regenerieren
+        RegenerateMana();
+
+        // Frostangriff aktivieren, wenn die rechte Maustaste gedrückt wird
+        if (Input.GetMouseButton(1) && frostTimer <= 0f)                        // Rechte Maustaste
+        {
+            isFrostAttackActive = true;
+        }
+        else
+        {
+            isFrostAttackActive = false;
+        }
+
+        // Frostangriff hat einen Cooldown, der nach jedem Einsatz zurückgesetzt wird
+        if (isFrostAttackActive)
+        {
+            frostTimer = frostCooldown;          // Setzt den Timer auf den Cooldown-Wert
+        }
+
+        
+        if (frostTimer > 0f)                    // Cooldown-Timer für Frostangriff
+        {
+            frostTimer -= Time.deltaTime;
+        }
+
+        // Wenn der Frostangriff aktiv ist, überprüfe ob die Maus über einem Gegner ist
+        if (isFrostAttackActive)
+        {
+            RaycastHit hit;
+            Ray ray = Camera.main.ScreenPointToRay(Input.mousePosition);
+
+            if (Physics.Raycast(ray, out hit))
+            {
+                if (hit.collider.CompareTag("Enemy"))
+                {
+                                                                                
+                    hit.collider.GetComponent<Enemy_Movement>().Freeze();           // Rufe die Freeze-Methode des Gegners auf
+                }
+            }
+        }
+
         //
         // Charakter Movement with Rigidbody
         //
-        // Erfassen der horizontalen und vertikalen Eingaben des Spielers
         float x = Input.GetAxis("Horizontal");
         float z = Input.GetAxis("Vertical");
-        // Die Position wird mithilfe des Rigidbodys geaendert
         rb.MovePosition(rb.position + (new Vector3(x, 0, z) * speed * Time.deltaTime));
 
-
         //
-        //  Charakter fall (fallen)
+        // Charakter fall (fallen)
         // 
-        if (transform.position.y < -5)  // Ueberprueft ob der Charakter auf der Y-Achse unter -5 faellt
+        if (transform.position.y < -5)
         {
-            transform.position = startPos;  // Setzt den Charakter wieder auf die startPos
+            transform.position = startPos;                          // Setzt den Charakter wieder auf die startPos
         }
 
-
         //
-        //  Charakter Jump
+        // Charakter Jump
         //
-        // Ueberpruefen, ob die Leertaste gedrueckt wurde und der Charakter auf dem Boden steht
         if (Input.GetKeyDown(KeyCode.Space) && isGrounded == true)
         {
-            // Anwenden einer Kraft nach oben, um den Charakter springen zu lassen
-            rb.AddForce(UnityEngine.Vector3.up * jumpForce, ForceMode.Impulse);
-
-            isGrounded = false; // Setzen von isGrounded auf false, um zu verhindern, dass der Charakter mehrfach springt
-
-            audioSource.Play(); // Abspielen des Sprung-Sounds
+            rb.AddForce(Vector3.up * jumpForce, ForceMode.Impulse);
+            isGrounded = false;
+            audioSource.Play();                                     // Abspielen des Sprung-Sounds
         }
-
 
         //
         // Charakter Rotation
@@ -87,48 +140,75 @@ public class Wizard_Steuerung : MonoBehaviour
             transform.localRotation = Quaternion.Euler(0f, 180f, 0f);   // Nach hinten schauen
         }
 
-
-        //************ AUSKOMMENTIERT *************
-        //  Shoot Fireball
         //
-        //if (Input.GetMouseButtonDown(0))
-        //{
-        //    ShootFireball();
-        //}
-        //*****************************************
+        // Unverwundbarkeits-Timer aktualisieren
+        //
+        if (isInvulnerable)
+        {
+            invulnerabilityTimer -= Time.deltaTime;
+            if (invulnerabilityTimer <= 0)
+            {
+                isInvulnerable = false;
+            }
+        }
     }
 
-
-    //**************************************** AUSKOMMENTIERT *********************************************
-    //  Fireball
     //
-    //private void ShootFireball()
-    //{
-    //    if (fireballPrefab != null)
-    //    {
-    //        GameObject fireball = Instantiate(fireballPrefab, transform.position, transform.rotation);
-    //        Rigidbody fireballRb = fireball.GetComponent<Rigidbody>();
-    //        if (fireballRb != null)
-    //        {
-    // Berechnung der Richtung in die der Feuerball geschossen wird
-    //            Vector3 fireballDirection = transform.forward;
-    //            fireballRb.AddForce(fireballDirection * fireballForce, ForceMode.Impulse);
-    //        }
-    //    }
-    //*****************************************************************************************************
+    // Methode zum Schießen (Schuss wird nur abgefeuert, wenn genug Mana vorhanden ist)
+    //
+    public bool TryShootFireball()
+    {
+        if (currentMana >= manaCostPerFireball)
+        {
+            currentMana -= manaCostPerFireball;     // Mana reduzieren
+            return true;                            // Feuerball kann abgeschossen werden
+        }
+        return false;                               // Nicht genug Mana, Feuerball kann nicht abgeschossen werden
+    }
 
-
+    //
+    // Mana regenerieren
+    //
+    private void RegenerateMana()
+    {
+        if (currentMana < maxMana)
+        {
+            currentMana += Mathf.RoundToInt(manaRegenRate * Time.deltaTime); // Mana pro Sekunde regenerieren
+            currentMana = Mathf.Clamp(currentMana, 0, maxMana); // Sicherstellen, dass Mana nicht über das Maximum steigt
+        }
+    }
 
     //
     // Charakter Kollision
     // 
     private void OnCollisionEnter(Collision collision)
     {
-        // Setzen von isGrounded auf true, um zu ermoeglichen, dass der Charakter wieder springen kann
+        // Setzen von isGrounded auf true, um zu ermöglichen, dass der Charakter wieder springen kann
         isGrounded = true;
+
+        // Überprüfen, ob der Gegner den Spieler berührt
+        if (collision.gameObject.CompareTag("Enemy") && !isInvulnerable)
+        {
+            TakeDamage(10); // Beispielwert für Schaden
+            isInvulnerable = true;
+            invulnerabilityTimer = invulnerabilityDuration;
+        }
+    }
+
+    //
+    // Methode, um Schaden zu nehmen
+    //
+    public void TakeDamage(int damage)
+    {
+        health -= damage;
+        Debug.Log("Spieler hat Schaden erlitten! Aktuelle Gesundheit: " + health);
+
+        if (health <= 0)
+        {
+            Debug.Log("Spieler ist gestorben!");
+        }
     }
 }
-
 
 
 
@@ -137,11 +217,11 @@ public class Wizard_Steuerung : MonoBehaviour
  *  
  * Unterschied zwischen transform.position & rb.position
  *  
- * transform.position:  Aendert die Position eines Objekts direkt, unabhaengig von der Physik. 
+ * transform.position:  Ändert die Position eines Objekts direkt, unabhängig von der Physik. 
  *  
- * (RigidBody)rb.position:  Aendert die Position eines Objekts ueber den "RigidBody", der die Physik beruecksichtigt.
+ * (RigidBody)rb.position:  Ändert die Position eines Objekts über den "RigidBody", der die Physik berücksichtigt.
  *                          
- * Warum wird VOID verwendet?   Wird verwendet, wenn eine Methode keinen Wert zurueckgibt. Sie fuehrt nur eine Aktion
+ * Warum wird VOID verwendet?   Wird verwendet, wenn eine Methode keinen Wert zurückgibt. Sie führt nur eine Aktion
  *                              aus oder reagiert auf Ereignisse, wie z.B. "OnCollisionEnter" in Unity.
  *                              
  *                              
@@ -149,7 +229,7 @@ public class Wizard_Steuerung : MonoBehaviour
  * 
  * transform:   In Unity ist transform eine Komponente eines GameObjects, die dessen Position, Rotation und Skalierung im Raum beschreibt.
  * 
- * localRotation:   localRotation bezieht sich auf die Rotation des GameObjects relativ zu seiner uebergeordneten Transform-Komponente.
+ * localRotation:   localRotation bezieht sich auf die Rotation des GameObjects relativ zu seiner übergeordneten Transform-Komponente.
  *                  Es ist ein Quaternion, das eine Rotation im 3D-Raum beschreibt.
  * 
  * Quaternion.Euler(0f, 270f, 0f):  Quaternion.Euler ist eine Methode, die eine Rotation in Form eines Quaternions aus Euler-Winkeln erzeugt.
@@ -165,3 +245,21 @@ public class Wizard_Steuerung : MonoBehaviour
  * 
  *                                                       
  */
+
+//**************************************** AUSKOMMENTIERT *********************************************
+//  Fireball
+//
+//private void ShootFireball()
+//{
+//    if (fireballPrefab != null)
+//    {
+//        GameObject fireball = Instantiate(fireballPrefab, transform.position, transform.rotation);
+//        Rigidbody fireballRb = fireball.GetComponent<Rigidbody>();
+//        if (fireballRb != null)
+//        {
+// Berechnung der Richtung in die der Feuerball geschossen wird
+//            Vector3 fireballDirection = transform.forward;
+//            fireballRb.AddForce(fireballDirection * fireballForce, ForceMode.Impulse);
+//        }
+//    }
+//*****************************************************************************************************
